@@ -250,3 +250,35 @@ requires
   lemma Valid: (* verified *)
     reachable ::Valid()
 ]
+
+(*** TyperSuccess *)
+(* case with multiple branches: order of branches must be preserved after list refactor *)
+type proc_case : process
+syscall get_val(x) { x }
+process p_case() : proc_case {
+  main {
+    var r = get_val(0) in
+    case
+    | [r = 1] -> event[::BranchOne()]
+    | [r = 2] -> event[::BranchTwo()]
+    | [r = 3] -> event[::BranchThree()]
+    end
+  }
+}
+
+(*** TyperSuccess *)
+(* repeat/until with multiple branches: order must be preserved after list refactor *)
+type proc_while : process
+syscall check(x) { x }
+process p_while() : proc_while {
+  main {
+    var s = check(0) in
+    repeat
+    | [s = 1] -> { var s = check(1) in 1 }
+    | [s = 2] -> { var s = check(2) in 2 }
+    until
+    | [s = 3] -> 3
+    | [s = 4] -> 4
+    end
+  }
+}

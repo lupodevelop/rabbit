@@ -183,13 +183,22 @@ let process_fact_closed new_meta_vars ctx lctx f =
   | Input.ProcessFact _ -> assert false (* Unused *)
 ;;
 
+(* Building the output list by appending a singleton at each step,
+   i.e. [acc @ [x]], costs O(|acc|) per iteration because (@) traverses
+   the left argument.  Over n iterations the total work is
+   0 + 1 + 2 + ... + (n-1) = n*(n-1)/2, i.e. O(n²).
+   Prepending with (::) is O(1), so accumulating in reverse and
+   applying List.rev once at the end costs O(n) overall. *)
 let process_facts_closed new_meta_vars ctx lctx fl =
-  List.fold_left
-    (fun (ctx, fl) f ->
-       let ctx, f = process_fact_closed new_meta_vars ctx lctx f in
-       ctx, fl @ [ f ])
-    (ctx, [])
-    fl
+  let ctx, rev_fl =
+    List.fold_left
+      (fun (ctx, acc) f ->
+         let ctx, f = process_fact_closed new_meta_vars ctx lctx f in
+         ctx, f :: acc)
+      (ctx, [])
+      fl
+  in
+  ctx, List.rev rev_fl
 ;;
 
 let rec collect_meta_fact new_meta_vars ctx lctx f =
@@ -201,17 +210,25 @@ let rec collect_meta_fact new_meta_vars ctx lctx f =
       (match err with
        | UnknownVariable (_k, v) ->
            let r, l = collect_meta_fact (v :: new_meta_vars) ctx lctx f in
-           r, l @ [ v ]
+           r, v :: l
        | _ -> error ~loc:locc err)
 ;;
 
 let collect_meta_facts ctx lctx fl =
-  List.fold_left
-    (fun ((ctx, lctx, fl), ls) f ->
-       let (ctx, lctx, f), l = collect_meta_fact ls ctx lctx f in
-       (ctx, lctx, fl @ [ f ]), ls @ l)
-    ((ctx, lctx, []), [])
-    fl
+  (* Same O(n²) → O(n) reasoning as process_facts_closed: accumulate both
+     the fact list and the meta-var list in reverse with (::) / List.rev_append,
+     then reverse once at the end.  List.rev_append l acc is equivalent to
+     (List.rev l) @ acc but traverses l only once, keeping the per-step
+     cost O(|l|) instead of O(|acc_ls|). *)
+  let (ctx, lctx, rev_fl), rev_ls =
+    List.fold_left
+      (fun ((ctx, lctx, acc_f), acc_ls) f ->
+         let (ctx, lctx, f), l = collect_meta_fact acc_ls ctx lctx f in
+         (ctx, lctx, f :: acc_f), List.rev_append l acc_ls)
+      ((ctx, lctx, []), [])
+      fl
+  in
+  (ctx, lctx, List.rev rev_fl), List.rev rev_ls
 ;;
 
 let process_facts ctx lctx fl =
@@ -319,9 +336,10 @@ let rec process_cmd ctx lctx { Location.data = c; Location.loc } =
               | Some v -> ctx, lctx, Syntax.Assign (v, process_expr ctx lctx e)
               | _ -> error ~loc NoBindingVariable))
     | Input.Case cs ->
-        let ctx, cs =
+        (* O(n²) → O(n): prepend with (::) and reverse once; see process_facts_closed. *)
+        let ctx, rev_cs =
           List.fold_left
-            (fun (ctx, cs) (fl, c) ->
+            (fun (ctx, acc) (fl, c) ->
                let (ctx, _lctx', fl), vl = process_facts ctx lctx fl in
                let ctx, _, c =
                  process_cmd
@@ -329,15 +347,16 @@ let rec process_cmd ctx lctx { Location.data = c; Location.loc } =
                    { lctx with Context.lctx_meta_var = vl @ lctx.Context.lctx_meta_var }
                    c
                in
-               ctx, cs @ [ vl, fl, c ])
+               ctx, (vl, fl, c) :: acc)
             (ctx, [])
             cs
         in
-        ctx, lctx, Syntax.Case cs
+        ctx, lctx, Syntax.Case (List.rev rev_cs)
     | Input.While (cs1, cs2) ->
-        let ctx, cs1 =
+        (* O(n²) → O(n): same pattern applied to both branch lists. *)
+        let ctx, rev_cs1 =
           List.fold_left
-            (fun (ctx, cs) (fl, c) ->
+            (fun (ctx, acc) (fl, c) ->
                let (ctx, _lctx', fl), vl = process_facts ctx lctx fl in
                let ctx, _, c =
                  process_cmd
@@ -345,13 +364,13 @@ let rec process_cmd ctx lctx { Location.data = c; Location.loc } =
                    { lctx with Context.lctx_meta_var = vl @ lctx.Context.lctx_meta_var }
                    c
                in
-               ctx, cs @ [ vl, fl, c ])
+               ctx, (vl, fl, c) :: acc)
             (ctx, [])
             cs1
         in
-        let ctx, cs2 =
+        let ctx, rev_cs2 =
           List.fold_left
-            (fun (ctx, cs) (fl, c) ->
+            (fun (ctx, acc) (fl, c) ->
                let (ctx, _lctx', fl), vl = process_facts ctx lctx fl in
                let ctx, _, c =
                  process_cmd
@@ -359,11 +378,11 @@ let rec process_cmd ctx lctx { Location.data = c; Location.loc } =
                    { lctx with Context.lctx_meta_var = vl @ lctx.Context.lctx_meta_var }
                    c
                in
-               ctx, cs @ [ vl, fl, c ])
+               ctx, (vl, fl, c) :: acc)
             (ctx, [])
             cs2
         in
-        ctx, lctx, Syntax.While (cs1, cs2)
+        ctx, lctx, Syntax.While (List.rev rev_cs1, List.rev rev_cs2)
     | Input.Event fl ->
         let ctx, fl = process_facts_closed [] ctx lctx fl in
         ctx, lctx, Syntax.Event fl
