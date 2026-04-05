@@ -55,25 +55,28 @@ let rec translate_expr2 ?(num = 0) e : expr * fact list * int =
   | Syntax.Integer z -> Integer z, [], num
   | Syntax.Float _f -> assert false
   | Syntax.Apply (o, el) ->
-      let es, fs, n =
+      (* O(n²) → O(n): accumulate in reverse with (::) / List.rev_append,
+         then reverse once at the end. *)
+      let rev_es, rev_fs, n =
         List.fold_left
-          (fun (es, fs, n) e ->
+          (fun (rev_es, rev_fs, n) e ->
              let e, fs', n = translate_expr2 ~num:n e in
-             es @ [ e ], fs @ fs', n)
+             e :: rev_es, List.rev_append fs' rev_fs, n)
           ([], [], num)
           el
       in
-      Apply (o, es), fs, n
+      Apply (o, List.rev rev_es), List.rev rev_fs, n
   | Syntax.Tuple el ->
-      let el, fs, n =
+      (* O(n²) → O(n): same pattern. *)
+      let rev_el, rev_fs, n =
         List.fold_left
-          (fun (es, fs, n) e ->
+          (fun (rev_es, rev_fs, n) e ->
              let e, fs', n = translate_expr2 ~num:n e in
-             es @ [ e ], fs @ fs', n)
+             e :: rev_es, List.rev_append fs' rev_fs, n)
           ([], [], num)
           el
       in
-      List el, fs, n
+      List (List.rev rev_el), List.rev rev_fs, n
   | Syntax.Channel (c, None) -> String c, [], num
   | Syntax.Channel (c, Some e) ->
       let e', fs, n = translate_expr2 ~num e in
@@ -82,12 +85,17 @@ let rec translate_expr2 ?(num = 0) e : expr * fact list * int =
 ;;
 
 let translate_expr2s ~num es =
-  List.fold_left
-    (fun (es, fs, num) e ->
-       let e, fs', num = translate_expr2 ~num e in
-       es @ [ e ], fs @ fs', num)
-    ([], [], num)
-    es
+  (* O(n²) → O(n): accumulate in reverse with (::) / List.rev_append,
+     then reverse once at the end; see translate_expr2. *)
+  let rev_es, rev_fs, num =
+    List.fold_left
+      (fun (rev_es, rev_fs, num) e ->
+         let e, fs', num = translate_expr2 ~num e in
+         e :: rev_es, List.rev_append fs' rev_fs, num)
+      ([], [], num)
+      es
+  in
+  List.rev rev_es, List.rev rev_fs, num
 
 let translate_fact ?(num = 0) namespace (f : Syntax.fact) =
   match f.Location.data with
@@ -125,12 +133,17 @@ let translate_fact ?(num = 0) namespace (f : Syntax.fact) =
 ;;
 
 let translate_facts ?(num = 0) namespace (fs : Syntax.fact list) =
-  List.fold_left
-    (fun (fs, gfs, es, num) f ->
-       let f, gfs', es', num = translate_fact ~num namespace f in
-       fs @ [ f ], gfs @ gfs', es @ es', num)
-    ([], [], [], num)
-    fs
+  (* O(n²) → O(n): accumulate all three lists in reverse with (::) /
+     List.rev_append, then reverse once at the end; see translate_expr2. *)
+  let rev_fs, rev_gfs, rev_es, num =
+    List.fold_left
+      (fun (rev_fs, rev_gfs, rev_es, num) f ->
+         let f, gfs', es', num = translate_fact ~num namespace f in
+         f :: rev_fs, List.rev_append gfs' rev_gfs, List.rev_append es' rev_es, num)
+      ([], [], [], num)
+      fs
+  in
+  List.rev rev_fs, List.rev rev_gfs, List.rev rev_es, num
 ;;
 
 let rec expr_shift_meta shift e =
