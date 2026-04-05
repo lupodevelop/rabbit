@@ -93,12 +93,15 @@ type expr =
   | Param
 
 let rec expr_collect_vars e =
+  (* O(n²) → O(n): List.rev_append prepends the collected vars of each
+     sub-expression onto the accumulator in O(|sub|), avoiding the O(|acc|)
+     cost of (@). *)
   match e with
   | FVar _ | Var _ | MetaVar _ | LocVar _ | TopVar _ | MetaNewVar _ | Param -> [ e ]
-  | Apply (_s, el) -> List.fold_left (fun vl e -> expr_collect_vars e @ vl) [] el
+  | Apply (_s, el) -> List.fold_left (fun vl e -> List.rev_append (expr_collect_vars e) vl) [] el
   | String _ -> []
   | Integer _ -> []
-  | List el -> List.fold_left (fun vl e -> expr_collect_vars e @ vl) [] el
+  | List el -> List.fold_left (fun vl e -> List.rev_append (expr_collect_vars e) vl) [] el
   | One -> []
   | Int _ -> []
   | AddOne e -> expr_collect_vars e
