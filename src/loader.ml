@@ -1017,10 +1017,14 @@ let rec process_decl env fn ({ Location.data = c; Location.loc } : Input.decl) =
 
 and load fn env =
   let decls, (used_idents, used_strings) = Lexer.read_file Parser.file fn in
+  (* O(n²) → O(n): prepend the newly collected idents/strings so that each
+     call to load costs O(|new list|) instead of O(|accumulated list|).  The
+     order within the combined list may differ from the original (@) order, but
+     only membership is tested on these lists, so order does not matter. *)
   let env =
     { env with
-      used_idents = used_idents @ env.used_idents
-    ; used_strings = used_strings @ env.used_strings
+      used_idents = List.rev_append used_idents env.used_idents
+    ; used_strings = List.rev_append used_strings env.used_strings
     }
   in
   List.fold_left (fun env decl -> process_decl env fn decl) env decls
