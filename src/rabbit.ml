@@ -211,6 +211,7 @@ let () =
     usage ;
   (* Files were accumulated in the wrong order, so we reverse them *)
   files := List.rev !files ;
+  if !files = [] then (Arg.usage options usage; exit 1) ;
 
   (* Set the maximum depth of pretty-printing, after which it prints ellipsis. *)
   Format.set_max_boxes !Config.max_boxes ;
