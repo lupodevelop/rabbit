@@ -82,7 +82,7 @@ let new_load_file fn =
     (* The new compiler loads each file with the empty env *)
     Ok (snd @@ Typer.load (Env.empty ()) fn)
   with
-  | (Typer.Error _ | Ulexbuf.Error _ as exn) -> Error exn
+  | (Typer.Error _ | Ulexbuf.Error _ | Sys_error _ as exn) -> Error exn
   | exn ->
       Format.eprintf "Typer unexpected exception: %s@." (Printexc.to_string exn);
       Error exn
@@ -242,4 +242,7 @@ let () =
       exit 1
   | Sem.Error err ->
       Print.message ~loc:err.loc "Compilation error" "%t" (Sem.print_error err.data);
+      exit 1
+  | Sys_error msg ->
+      Print.message "I/O error" "%s" msg;
       exit 1
