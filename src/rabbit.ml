@@ -139,9 +139,10 @@ let new_translate_system ext decls =
   (match !ofile with
    | None -> ()
    | Some ofile ->
+       (* render first: an exception while printing must not leave a truncated file *)
+       let s = Format.asprintf "%a@." Spthy.print spthy in
        Out_channel.with_open_text (ofile ^ ext) @@ fun oc ->
-       let ppf = Format.formatter_of_out_channel oc in
-       Format.fprintf ppf "%a@." Spthy.print spthy)
+       Out_channel.output_string oc s)
 
 let wrap_exn f = try Ok (f ()) with exn -> Error exn
 
