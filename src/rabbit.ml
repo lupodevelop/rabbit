@@ -137,7 +137,8 @@ let new_translate_system ext decls =
    | None, _ | _, false -> ());
   let spthy = Spthy.compile_sem sem in
   (match !ofile with
-   | None -> ()
+   | None ->
+       Print.message "Warning" "%s" "output file not specified (use -o)"
    | Some ofile ->
        (* render first: an exception while printing must not leave a truncated file *)
        let s = Format.asprintf "%a@." Spthy.print spthy in
